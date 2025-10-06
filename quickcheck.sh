@@ -61,9 +61,16 @@ check_ip_domain() {
         return
     fi
 
+    if [[ "$indicator" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        ENDPOINT="ip_addresses"
+    else
+        ENDPOINT="domains"
+    fi
+    # ------------------------------------
+
     # API Call
     VT_RESPONSE=$(curl -s --request GET \
-      --url "https://www.virustotal.com/api/v3/ip_addresses/$indicator" \
+      --url "https://www.virustotal.com/api/v3/$ENDPOINT/$indicator" \
       --header "x-apikey: $VT_API_KEY")
 
     # Error checking
@@ -73,12 +80,25 @@ check_ip_domain() {
     fi
 
     # Parse and display the data
-    HARMFUL=$(echo "$VT_RESPONSE" | jq -r '.data.attributes.last_analysis_stats.malicious + .data.attributes.last_analysis_stats.suspicious')
+    HARMFUL_RAW=$(echo "$VT_RESPONSE" | jq -r '.data.attributes.last_analysis_stats.malicious + .data.attributes.last_analysis_stats.suspicious' 2>/dev/null)
+    COUNTRY_RAW=$(echo "$VT_RESPONSE" | jq -r '.data.attributes.country' 2>/dev/null)
+
+    if [ "$HARMFUL_RAW" = "null" ] || [ -z "$HARMFUL_RAW" ]; then
+        HARMFUL=0
+    else
+        HARMFUL="$HARMFUL_RAW"
+    fi
+    
+    if [ "$COUNTRY_RAW" = "null" ] || [ -z "$COUNTRY_RAW" ]; then
+        COUNTRY="Unknown/N/A"
+    else
+        COUNTRY="$COUNTRY_RAW"
+    fi
+    # ------------------------------------
+
     TOTAL=$(echo "$VT_RESPONSE" | jq -r '.data.attributes.last_analysis_stats.harmless + .data.attributes.last_analysis_stats.malicious + .data.attributes.last_analysis_stats.suspicious')
-    COUNTRY=$(echo "$VT_RESPONSE" | jq -r '.data.attributes.country')
 
     echo "    - Total Scanners Checked: $TOTAL"
-    # تم التعديل: تطبيق اللون الأحمر على قيمة المتغير فقط
     echo -e "    - Malicious/Suspicious Detections: ${RED}$HARMFUL${NC}"
     echo "    - Associated Country: $COUNTRY"
 
@@ -102,7 +122,7 @@ check_file_hash() {
 
     # API Call
     VT_RESPONSE=$(curl -s --request GET \
-      --url "https://www.virustotal.com/api/v3/files/$hash" \
+      --url "https://www.virustotal.com/api/v3/search?query=$hash" \
       --header "x-apikey: $VT_API_KEY")
 
     # Error checking
@@ -111,10 +131,14 @@ check_file_hash() {
         return
     fi
 
-    # Parse and display the data
-    HARMFUL=$(echo "$VT_RESPONSE" | jq -r '.data.attributes.last_analysis_stats.malicious + .data.attributes.last_analysis_stats.suspicious')
+    HARMFUL_RAW=$(echo "$VT_RESPONSE" | jq -r '.data[0].attributes.last_analysis_stats.malicious + .data[0].attributes.last_analysis_stats.suspicious' 2>/dev/null)
     
-    # تم التعديل: تطبيق اللون الأحمر على قيمة المتغير فقط
+    if [ "$HARMFUL_RAW" = "null" ] || [ -z "$HARMFUL_RAW" ]; then
+        HARMFUL=0
+    else
+        HARMFUL="$HARMFUL_RAW"
+    fi
+    
     echo -e "    - Malicious Detections: ${RED}$HARMFUL${NC}"
     
     if [ "$HARMFUL" -gt 0 ]; then
